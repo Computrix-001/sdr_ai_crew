@@ -1,0 +1,11 @@
+crewai
+langchain
+python-dotenv
+google-search-results
+azure-communication-email
+azure-identity
+openai>=1.0.0
+pandas
+numpy
+requests
+streamlit
