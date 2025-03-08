@@ -1,17 +1,19 @@
 import streamlit as st
 import sys
 import os
+from datetime import datetime
 import pandas as pd
-from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), '.env'))
 
 # Add parent directory to path to import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
-from agents.conversation_agent import ConversationAgent
+from src.agents.conversation_agent import ConversationAgent
 
 st.set_page_config(page_title="Conversations", page_icon="💬", layout="wide")
 

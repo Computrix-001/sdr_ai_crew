@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
 
 # Add parent directory to path to import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+parent_dir = os.path.dirname(os.path.dirname(__file__))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 # Check environment variables
 env_vars = {
@@ -200,11 +202,11 @@ def main():
         st.image("https://img.icons8.com/fluency/96/000000/artificial-intelligence.png", width=80)
         
         st.markdown("### Navigation")
-        st.page_link("sdr-ai-crew-system/src/streamlit/app.py", label="Dashboard", icon="🏠")
-        st.page_link("sdr-ai-crew-system/src/streamlit/pages/lead_generation.py", label="Lead Generation", icon="🎯")
-        st.page_link("sdr-ai-crew-system/src/streamlit/pages/lead_research.py", label="Lead Research", icon="🔍")
-        st.page_link("sdr-ai-crew-system/src/streamlit/pages/outreach.py", label="Email Outreach", icon="📧")
-        st.page_link("sdr-ai-crew-system/src/streamlit/pages/conversation_tracking.py", label="Conversations", icon="💬")
+        st.markdown("🏠 Dashboard")  # Current page
+        st.page_link("pages/lead_generation.py", label="Lead Generation", icon="🎯")
+        st.page_link("pages/lead_research.py", label="Lead Research", icon="🔍")
+        st.page_link("pages/outreach.py", label="Email Outreach", icon="📧")
+        st.page_link("pages/conversation_tracking.py", label="Conversations", icon="💬")
         
         st.markdown("---")
         st.markdown("### Quick Actions")

@@ -18,7 +18,9 @@ class SerpApiClient:
                 "q": query,
                 "num": num_results,
                 "api_key": self.api_key,
-                "engine": "google"
+                "engine": "google",
+                "gl": "us",  # Search in US
+                "hl": "en"   # Language in English
             }
             
             # Add any additional search parameters
@@ -33,7 +35,7 @@ class SerpApiClient:
             
     def build_search_query(self, keyword: str = None, website: str = None, 
                           location: str = None, position: str = None, 
-                          emails: bool = True) -> str:
+                          emails: bool = True, phone: bool = True) -> tuple:
         """Build a search query based on filters"""
         query_parts = []
         
@@ -46,10 +48,14 @@ class SerpApiClient:
         if position:
             query_parts.append(f'"{position}"')
             
-        # Add email domains if requested
+        # Add contact information patterns
         if emails:
-            email_domains = '"@gmail.com" OR "@yahoo.com" OR "@hotmail.com" OR "@outlook.com" OR "@aol.com"'
-            query_parts.append(f'({email_domains})')
+            email_patterns = '"@gmail.com" OR "@yahoo.com" OR "@hotmail.com" OR "@outlook.com" OR "@company.com" OR "@business.com"'
+            query_parts.append(f'({email_patterns})')
+        
+        if phone:
+            phone_patterns = '"phone:" OR "contact:" OR "tel:" OR "mobile:"'
+            query_parts.append(f'({phone_patterns})')
         
         # Combine all parts
         query = " ".join(query_parts)
@@ -60,3 +66,20 @@ class SerpApiClient:
             location_param = {"location": location}
             
         return query, location_param
+
+    def extract_contact_info(self, text: str) -> Dict[str, Optional[str]]:
+        """Extract email and phone number from text"""
+        import re
+        
+        # Email pattern
+        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        email_match = re.search(email_pattern, text)
+        
+        # Phone pattern (various formats)
+        phone_pattern = r'(?:(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([0-9]{3})\s*\)|([0-9]{3}))\s*(?:[.-]\s*)?)?([0-9]{3})\s*(?:[.-]\s*)?([0-9]{4})'
+        phone_match = re.search(phone_pattern, text)
+        
+        return {
+            'email': email_match.group(0) if email_match else None,
+            'phone': phone_match.group(0) if phone_match else None
+        }

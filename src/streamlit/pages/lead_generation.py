@@ -91,7 +91,7 @@ def main():
         
         with col3:
             num_results = st.slider("Number of results", 5, 50, 10)
-            include_emails = st.checkbox("Include email patterns in search", value=True)
+            include_contact = st.checkbox("Include contact information (email/phone)", value=True)
         
         with col4:
             st.write("Advanced Options")
@@ -127,8 +127,8 @@ def main():
                     if leads:
                         st.success(f"Found {len(leads)} potential leads!")
                         
-                        # Create a DataFrame for easy export
-                        leads_df = pd.DataFrame(leads)
+                        # Convert leads to DataFrame for tabular display
+                        leads_df = lead_gen_agent.format_leads_table(leads)
                         
                         # Display export button
                         col_placeholder, col_export_btn = st.columns([4, 1])
@@ -142,7 +142,25 @@ def main():
                                 use_container_width=True
                             )
                         
-                        # Display leads in cards
+                        # Display leads in table format
+                        st.markdown("### Generated Leads")
+                        st.dataframe(
+                            leads_df,
+                            use_container_width=True,
+                            column_config={
+                                "company_name": "Company",
+                                "contact_email": "Email",
+                                "contact_phone": "Phone",
+                                "website": st.column_config.LinkColumn("Website"),
+                                "description": st.column_config.TextColumn("Description", width="large"),
+                                "industry": "Industry",
+                                "location": "Location",
+                                "source": "Source"
+                            }
+                        )
+                        
+                        # Display individual lead cards for detailed view
+                        st.markdown("### Detailed Lead Information")
                         for lead in leads:
                             with st.container():
                                 st.markdown(f"""
@@ -152,7 +170,8 @@ def main():
                                     <div class="company-description">{lead['description']}</div>
                                     <div style="margin-top: 0.5rem;">
                                         <span style="color: #6B7280; font-size: 0.9rem;">
-                                            Email: {lead['contact_email'] if lead['contact_email'] else 'Not found'}
+                                            Email: {lead['contact_email'] if lead['contact_email'] else 'Not found'} | 
+                                            Phone: {lead['contact_phone'] if lead['contact_phone'] else 'Not found'}
                                         </span>
                                     </div>
                                 </div>

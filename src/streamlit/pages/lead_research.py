@@ -8,7 +8,9 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), '.env'))
 
 # Add parent directory to path to import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 from agents.lead_research_agent import LeadResearchAgent
 
@@ -97,15 +99,21 @@ def check_azure_openai_config():
 def display_research_results(research_results):
     """Display research results in a nicely formatted card"""
     company_name = research_results.get('company_name', 'Unknown Company')
-    research_data = research_results.get('research_data', 'No research data available')
-    scoring_analysis = research_results.get('scoring_analysis', 'No scoring available')
+    website = research_results.get('website', 'N/A')
+    industry = research_results.get('industry', 'N/A')
+    research_data = research_results.get('research_data', '')
+    scoring_analysis = research_results.get('scoring_analysis', '')
     
+    if not research_data or research_data == 'No research data available':
+        st.warning("No research data available. Please try researching again.")
+        return
+        
     st.markdown(f"""
     <div class="research-card">
         <div class="company-name">{company_name}</div>
         <div style="margin-top: 0.5rem; font-size: 0.9rem;">
-            <span>Website: <a href="{research_results.get('website', '#')}" target="_blank">{research_results.get('website', 'N/A')}</a></span>
-            <span style="margin-left: 1rem;">Industry: {research_results.get('industry', 'N/A')}</span>
+            <span>Website: <a href="{website}" target="_blank">{website}</a></span>
+            <span style="margin-left: 1rem;">Industry: {industry}</span>
         </div>
         
         <div class="section-title">Research Insights</div>
@@ -113,17 +121,24 @@ def display_research_results(research_results):
         
         <div class="section-title">Lead Scoring</div>
         <div style="white-space: pre-line;">{scoring_analysis}</div>
-        
-        <div style="margin-top: 1rem;">
-            <button style="background-color: #2563EB; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;">
-                Export Research
-            </button>
-            <button style="background-color: #10B981; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.25rem; margin-left: 0.5rem; cursor: pointer;">
-                Start Outreach
-            </button>
-        </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📊 Export Research", key=f"export_{company_name}"):
+            research_df = pd.DataFrame([research_results])
+            csv = research_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Research",
+                data=csv,
+                file_name=f"{company_name}_research.csv",
+                mime="text/csv"
+            )
+    with col2:
+        if st.button("📧 Start Outreach", key=f"outreach_{company_name}"):
+            st.session_state.outreach_data = research_results
+            st.switch_page("pages/outreach.py")
 
 def main():
     st.markdown('<div class="main-header">Lead Research 🔍</div>', unsafe_allow_html=True)
@@ -196,9 +211,7 @@ def main():
             research_agent = LeadResearchAgent()
             
             # Create a progress bar
-            st.markdown('<div class="progress-bar-container">', unsafe_allow_html=True)
             progress_bar = st.progress(0)
-            st.markdown('</div>', unsafe_allow_html=True)
             
             # Research each lead
             researched_leads = []
@@ -214,15 +227,16 @@ def main():
                     display_research_results(researched_lead)
             
             # Save results
-            results_df = pd.DataFrame(researched_leads)
-            csv = results_df.to_csv(index=False)
-            
-            st.download_button(
-                label="📥 Export All Research Results",
-                data=csv,
-                file_name="lead_research_results.csv",
-                mime="text/csv"
-            )
+            if researched_leads:
+                results_df = pd.DataFrame(researched_leads)
+                csv = results_df.to_csv(index=False)
+                
+                st.download_button(
+                    label="📥 Export All Research Results",
+                    data=csv,
+                    file_name="lead_research_results.csv",
+                    mime="text/csv"
+                )
                 
         except Exception as e:
             st.error(f"Error during research: {str(e)}")
