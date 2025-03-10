@@ -8,29 +8,53 @@ class LeadResearchAgent:
     def __init__(self):
         """Initialize LeadResearchAgent with Azure OpenAI client"""
         try:
-            # Try with new CrewAI format first
-            if os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"):
+            # Try CrewAI format first
+            if os.getenv("AZURE_API_KEY") and os.getenv("AZURE_API_BASE"):
                 self.client = AzureOpenAI(
-                    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-                    azure_endpoint=os.getenv("AZURE_API_ENDPOINT")
+                    api_key=os.getenv("AZURE_API_KEY"),
+                    api_version=os.getenv("AZURE_API_VERSION"),
+                    azure_endpoint=os.getenv("AZURE_API_BASE")
                 )
             # Fall back to legacy format
             elif os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"):
                 self.client = AzureOpenAI(
                     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+                    api_version=os.getenv("AZURE_API_VERSION"),
                     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
                 )
             else:
                 raise ValueError("Azure OpenAI credentials not found in environment variables")
+                
+            # Verify deployment
+            self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+            if not self.deployment_name:
+                raise ValueError("AZURE_OPENAI_DEPLOYMENT not found in environment variables")
+                
         except Exception as e:
             print(f"Azure OpenAI initialization failed: {str(e)}")
             raise
 
+    def validate_lead(self, lead: Dict) -> bool:
+        """Validate required lead information"""
+        required_fields = ['company_name']
+        return all(lead.get(field) for field in required_fields)
+
+    def validate_research_response(self, research_data: str) -> bool:
+        """Validate that research response contains required sections"""
+        required_sections = [
+            "Company Overview",
+            "Key Products/Services",
+            "Target Market",
+            "Pain Points"
+        ]
+        return all(section.lower() in research_data.lower() for section in required_sections)
+
     def research_company(self, lead: Dict) -> Dict:
         """Research company using available information and enrich lead data"""
         try:
+            if not self.validate_lead(lead):
+                raise ValueError("Invalid lead data: Missing required fields")
+
             research_prompt = f"""
             Analyze this company and provide detailed insights:
             Company Name: {lead.get('company_name')}
@@ -60,6 +84,10 @@ class LeadResearchAgent:
             )
 
             research_data = response.choices[0].message.content.strip()
+            
+            # Validate research response
+            if not self.validate_research_response(research_data):
+                print(f"Warning: Incomplete research data for {lead.get('company_name')}")
             
             # Calculate lead score
             scoring_prompt = f"""
@@ -97,11 +125,24 @@ class LeadResearchAgent:
     def analyze_leads(self, leads: List[Dict]) -> List[Dict]:
         """Analyze a list of leads using Azure OpenAI"""
         analyzed_leads = []
-        for lead in leads:
-            print(f"\nResearching: {lead.get('company_name', 'Unknown Company')}")
-            analyzed_lead = self.research_company(lead)
-            analyzed_leads.append(analyzed_lead)
-            print(f"Research completed for: {lead.get('company_name')}")
+        total_leads = len(leads)
+        
+        print(f"\nStarting analysis of {total_leads} leads...")
+        
+        for index, lead in enumerate(leads, 1):
+            company_name = lead.get('company_name', 'Unknown Company')
+            try:
+                print(f"\n[{index}/{total_leads}] Researching: {company_name}")
+                analyzed_lead = self.research_company(lead)
+                analyzed_leads.append(analyzed_lead)
+                print(f"✓ Research completed for: {company_name}")
+            except Exception as e:
+                print(f"✗ Error researching {company_name}: {str(e)}")
+                # Add error information to lead data
+                lead['research_error'] = str(e)
+                analyzed_leads.append(lead)
+                
+        print(f"\nAnalysis completed. Processed {len(analyzed_leads)} leads.")
         return analyzed_leads
 
     def process_csv_leads(self, csv_path: str) -> List[Dict]:
