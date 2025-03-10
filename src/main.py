@@ -3,12 +3,39 @@ from agents.lead_research_agent import LeadResearchAgent
 from agents.outreach_agent import OutreachAgent
 from agents.conversation_agent import ConversationAgent
 from tools.serp_api import SerpApiClient
+from openai import AzureOpenAI
 import os
 from typing import List, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+def verify_azure_deployment() -> bool:
+    """Verify Azure OpenAI deployment configuration"""
+    deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    if not deployment_name:
+        print("❌ Azure OpenAI deployment name not configured")
+        return False
+        
+    try:
+        client = AzureOpenAI(
+            api_key=os.getenv("AZURE_API_KEY"),
+            api_version=os.getenv("AZURE_API_VERSION"),
+            azure_endpoint=os.getenv("AZURE_API_BASE")
+        )
+        
+        # Test deployment
+        response = client.chat.completions.create(
+            model=deployment_name,
+            messages=[{"role": "system", "content": "Test"}],
+            max_tokens=5
+        )
+        print(f"✅ Azure OpenAI deployment '{deployment_name}' verified")
+        return True
+    except Exception as e:
+        print(f"❌ Azure OpenAI deployment verification failed: {str(e)}")
+        return False
 
 def process_generated_leads() -> List[Dict]:
     """Process leads generated through SERP API"""
@@ -79,8 +106,8 @@ def process_csv_leads() -> List[Dict]:
         print(f"Error in CSV processing: {e}")
     return []
 
-def main():
-    # Check environment variables
+def check_environment() -> bool:
+    """Check all required environment variables and configurations"""
     print("Checking environment variables...")
     
     # Check Azure OpenAI configuration
@@ -88,30 +115,41 @@ def main():
     
     # Check CrewAI format
     if all([os.getenv("AZURE_API_KEY"), os.getenv("AZURE_API_BASE"), os.getenv("AZURE_API_VERSION")]):
-        print("✅ Azure OpenAI configured (CrewAI format)")
+        print("✅ Azure OpenAI credentials configured (CrewAI format)")
         azure_openai_configured = True
     # Check legacy format
     elif all([os.getenv("AZURE_OPENAI_API_KEY"), os.getenv("AZURE_OPENAI_ENDPOINT"), os.getenv("AZURE_OPENAI_API_VERSION")]):
-        print("✅ Azure OpenAI configured (Legacy format)")
+        print("✅ Azure OpenAI credentials configured (Legacy format)")
         azure_openai_configured = True
     else:
-        print("❌ Azure OpenAI not configured properly")
+        print("❌ Azure OpenAI credentials not configured properly")
+        return False
+    
+    # Verify Azure OpenAI deployment
+    if not verify_azure_deployment():
+        return False
     
     # Check Azure Communication Services
     if os.getenv("AZURE_COMMUNICATION_CONNECTION_STRING") and os.getenv("AZURE_COMMUNICATION_SENDER_EMAIL"):
         print("✅ Azure Communication Services configured")
     else:
         print("❌ Azure Communication Services not configured properly")
+        return False
     
     # Check SERP API
     if os.getenv("SERPAPI_API_KEY"):
         print("✅ SERP API configured")
     else:
         print("❌ SERP API not configured properly")
+        return False
     
-    if not azure_openai_configured:
-        print("\n⚠️ Cannot proceed without Azure OpenAI configuration")
-        print("Please update your .env file with the required credentials")
+    return True
+
+def main():
+    # Check environment and configurations
+    if not check_environment():
+        print("\n⚠️ Cannot proceed: Missing or invalid configuration")
+        print("Please check your .env file and Azure OpenAI deployment settings")
         return
     
     # Process both lead sources

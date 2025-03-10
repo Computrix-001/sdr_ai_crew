@@ -13,7 +13,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from src.agents.conversation_agent import ConversationAgent
+from agents.conversation_agent import ConversationAgent  # Fixed import statement
 
 st.set_page_config(page_title="Conversations", page_icon="💬", layout="wide")
 
@@ -213,7 +213,7 @@ def main():
                 st.markdown(card_html, unsafe_allow_html=True)
                 
                 # Hidden button that updates the session state
-                if st.button(f"Select {company}", key=f"btn_{idx}_{status}", label_visibility="collapsed"):
+                if st.button(f"Select {company}", key=f"btn_{idx}_{status}"):
                     st.session_state.selected_conversation = conv
                     st.rerun()
     

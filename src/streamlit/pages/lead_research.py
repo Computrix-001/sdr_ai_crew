@@ -16,96 +16,96 @@ from agents.lead_research_agent import LeadResearchAgent
 
 st.set_page_config(page_title="Lead Research", page_icon="🔍", layout="wide")
 
-# Custom CSS
+# Custom CSS (keeping the existing CSS)
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 1rem;
-    }
-    .upload-section {
-        background-color: #F3F4F6;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin-bottom: 1.5rem;
-    }
-    .research-card {
-        background-color: white;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        border: 1px solid #E5E7EB;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .company-name {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #1E40AF;
-    }
-    .section-title {
-        font-size: 1rem;
-        font-weight: 600;
-        color: #4B5563;
-        margin-top: 0.75rem;
-        margin-bottom: 0.25rem;
-    }
-    .score-badge {
-        display: inline-block;
-        padding: 0.25rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        margin-right: 0.5rem;
-    }
-    .score-high {
-        background-color: #D1FAE5;
-        color: #065F46;
-    }
-    .score-medium {
-        background-color: #FEF3C7;
-        color: #92400E;
-    }
-    .score-low {
-        background-color: #FEE2E2;
-        color: #B91C1C;
-    }
-    .progress-bar-container {
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-    }
+    .main-header { font-size: 2rem; font-weight: 700; color: #1E3A8A; margin-bottom: 1rem; }
+    .upload-section { background-color: #F3F4F6; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem; }
+    .research-card { background-color: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; 
+                    border: 1px solid #E5E7EB; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .company-name { font-size: 1.2rem; font-weight: 600; color: #1E40AF; }
+    .section-title { font-size: 1rem; font-weight: 600; color: #4B5563; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+    .score-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 9999px; 
+                  font-size: 0.875rem; font-weight: 500; margin-right: 0.5rem; }
+    .score-high { background-color: #D1FAE5; color: #065F46; }
+    .score-medium { background-color: #FEF3C7; color: #92400E; }
+    .score-low { background-color: #FEE2E2; color: #B91C1C; }
+    .progress-bar-container { margin-top: 1rem; margin-bottom: 1rem; }
+    .error-message { color: #DC2626; padding: 1rem; background-color: #FEE2E2; border-radius: 0.5rem; }
+    .success-message { color: #065F46; padding: 1rem; background-color: #D1FAE5; border-radius: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
-def check_azure_openai_config():
-    """Check if Azure OpenAI is properly configured"""
-    # Check for CrewAI format
-    crew_format = all([
-        os.getenv("AZURE_API_KEY"),
-        os.getenv("AZURE_API_BASE"),
-        os.getenv("AZURE_API_VERSION")
-    ])
+def validate_environment():
+    """Validate all required environment variables"""
+    required_vars = {
+        'AZURE_OPENAI_API_KEY': os.getenv('AZURE_OPENAI_API_KEY'),
+        'AZURE_OPENAI_ENDPOINT': os.getenv('AZURE_OPENAI_ENDPOINT'),
+        'AZURE_OPENAI_API_VERSION': os.getenv('AZURE_OPENAI_API_VERSION'),
+        'AZURE_OPENAI_DEPLOYMENT': os.getenv('AZURE_OPENAI_DEPLOYMENT')
+    }
     
-    # Check for legacy format
-    legacy_format = all([
-        os.getenv("AZURE_OPENAI_API_KEY"),
-        os.getenv("AZURE_OPENAI_ENDPOINT"),
-        os.getenv("AZURE_OPENAI_API_VERSION")
-    ])
+    missing_vars = [key for key, value in required_vars.items() if not value]
     
-    return crew_format or legacy_format
+    if missing_vars:
+        st.error("❌ Missing required environment variables:")
+        for var in missing_vars:
+            st.error(f"- {var}")
+        return False
+    return True
+
+def process_uploaded_file(uploaded_file):
+    """Process and validate uploaded CSV file"""
+    try:
+        if uploaded_file is None:
+            return None
+            
+        # Try to read CSV with explicit encoding
+        try:
+            df = pd.read_csv(uploaded_file, encoding='utf-8')
+        except UnicodeDecodeError:
+            df = pd.read_csv(uploaded_file, encoding='latin-1')
+        
+        # Debug print
+        st.write("DataFrame Shape:", df.shape)
+        st.write("DataFrame Columns:", df.columns.tolist())
+        
+        # Check if file is empty
+        if df.empty:
+            st.error("The uploaded CSV file is empty")
+            return None
+            
+        # Check for required columns
+        required_columns = ['company_name']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            st.error(f"Missing required columns: {', '.join(missing_columns)}")
+            return None
+            
+        return df
+    except pd.errors.EmptyDataError:
+        st.error("The uploaded CSV file is empty")
+        return None
+    except Exception as e:
+        st.error(f"Error reading CSV: {str(e)}")
+        st.write("Error details:", str(e))
+        return None
 
 def display_research_results(research_results):
     """Display research results in a nicely formatted card"""
+    if not research_results:
+        st.error("No research results to display")
+        return
+        
     company_name = research_results.get('company_name', 'Unknown Company')
     website = research_results.get('website', 'N/A')
     industry = research_results.get('industry', 'N/A')
     research_data = research_results.get('research_data', '')
     scoring_analysis = research_results.get('scoring_analysis', '')
     
-    if not research_data or research_data == 'No research data available':
-        st.warning("No research data available. Please try researching again.")
+    if 'Error during research' in research_data:
+        st.error(f"Research Error for {company_name}: {research_data}")
         return
         
     st.markdown(f"""
@@ -143,17 +143,9 @@ def display_research_results(research_results):
 def main():
     st.markdown('<div class="main-header">Lead Research 🔍</div>', unsafe_allow_html=True)
     
-    # Check Azure OpenAI configuration
-    if not check_azure_openai_config():
-        st.error("❌ Azure OpenAI not configured correctly!")
-        st.info("""
-        Please check your .env file for Azure OpenAI credentials.
-        
-        You need either:
-        - AZURE_API_KEY, AZURE_API_BASE, and AZURE_API_VERSION (CrewAI format)
-        - AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_API_VERSION (Legacy format)
-        """)
-        return
+    # Validate environment variables
+    if not validate_environment():
+        st.stop()
     
     # File upload section
     st.markdown("### Upload Leads")
@@ -167,17 +159,10 @@ def main():
             uploaded_file = st.file_uploader("Upload your leads CSV", type=['csv'])
             
             if uploaded_file:
-                try:
-                    df = pd.read_csv(uploaded_file)
-                    required_columns = ['company_name']
-                    
-                    if not all(col in df.columns for col in required_columns):
-                        st.warning(f"CSV must contain at least these columns: {', '.join(required_columns)}")
-                    else:
-                        st.success(f"Successfully loaded {len(df)} leads")
-                        st.dataframe(df, use_container_width=True)
-                except Exception as e:
-                    st.error(f"Error reading CSV: {str(e)}")
+                df = process_uploaded_file(uploaded_file)
+                if df is not None:
+                    st.success(f"Successfully loaded {len(df)} leads")
+                    st.dataframe(df, use_container_width=True)
         
         with col2:
             st.write("Or research a single company")
@@ -204,42 +189,34 @@ def main():
     
     # Research section
     if research_file_clicked and uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            leads = df.to_dict('records')
-            
-            research_agent = LeadResearchAgent()
-            
-            # Create a progress bar
-            progress_bar = st.progress(0)
-            
-            # Research each lead
-            researched_leads = []
-            for idx, lead in enumerate(leads):
-                with st.spinner(f"Researching {lead['company_name']} ({idx+1}/{len(leads)})"):
-                    researched_lead = research_agent.research_company(lead)
-                    researched_leads.append(researched_lead)
-                    
-                    # Update progress
-                    progress_bar.progress((idx + 1) / len(leads))
-                    
-                    # Display research results
-                    display_research_results(researched_lead)
-            
-            # Save results
-            if researched_leads:
-                results_df = pd.DataFrame(researched_leads)
-                csv = results_df.to_csv(index=False)
+        df = process_uploaded_file(uploaded_file)
+        if df is not None:
+            try:
+                leads = df.to_dict('records')
+                research_agent = LeadResearchAgent()
                 
-                st.download_button(
-                    label="📥 Export All Research Results",
-                    data=csv,
-                    file_name="lead_research_results.csv",
-                    mime="text/csv"
-                )
+                progress_bar = st.progress(0)
+                researched_leads = []
                 
-        except Exception as e:
-            st.error(f"Error during research: {str(e)}")
+                for idx, lead in enumerate(leads):
+                    with st.spinner(f"Researching {lead['company_name']} ({idx+1}/{len(leads)})"):
+                        researched_lead = research_agent.research_company(lead)
+                        researched_leads.append(researched_lead)
+                        progress_bar.progress((idx + 1) / len(leads))
+                        display_research_results(researched_lead)
+                
+                if researched_leads:
+                    results_df = pd.DataFrame(researched_leads)
+                    csv = results_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Export All Research Results",
+                        data=csv,
+                        file_name="lead_research_results.csv",
+                        mime="text/csv"
+                    )
+                    
+            except Exception as e:
+                st.error(f"Error during batch research: {str(e)}")
     
     elif research_single_clicked and manual_company:
         try:
@@ -253,12 +230,10 @@ def main():
             with st.spinner(f"Researching {manual_company}..."):
                 research_agent = LeadResearchAgent()
                 researched_lead = research_agent.research_company(lead)
-                
-                # Display research results
                 display_research_results(researched_lead)
                 
         except Exception as e:
-            st.error(f"Error during research: {str(e)}")
+            st.error(f"Error researching {manual_company}: {str(e)}")
 
 if __name__ == "__main__":
     main()

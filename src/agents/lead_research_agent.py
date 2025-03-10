@@ -9,11 +9,11 @@ class LeadResearchAgent:
         """Initialize LeadResearchAgent with Azure OpenAI client"""
         try:
             # Try with new CrewAI format first
-            if os.getenv("AZURE_API_KEY") and os.getenv("AZURE_API_BASE"):
+            if os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"):
                 self.client = AzureOpenAI(
-                    api_key=os.getenv("AZURE_API_KEY"),
-                    api_version=os.getenv("AZURE_API_VERSION"),
-                    azure_endpoint=os.getenv("AZURE_API_BASE")
+                    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+                    azure_endpoint=os.getenv("AZURE_API_ENDPOINT")
                 )
             # Fall back to legacy format
             elif os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"):
