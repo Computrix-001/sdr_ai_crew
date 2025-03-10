@@ -14,10 +14,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read # This is required for actions/checkout
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify repository contents
+        run: ls -la
 
       - name: Set up Python version
         uses: actions/setup-python@v5
@@ -52,8 +55,8 @@ jobs:
       name: 'Production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # This is required for requesting the JWT
+      contents: read # This is required for actions/checkout
 
     steps:
       - name: Download artifact from build job
@@ -64,18 +67,16 @@ jobs:
       - name: Unzip artifact for deployment
         run: unzip release.zip
 
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_38E60CD520934F22A167F349E278A8BB }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5BCAEE92B6FE4B3683C59758AFD81FF7 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F5730CB3A18A49E0AB172181B18CEE53 }}
-
+ 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'gamaai'
           slot-name: 'Production'
-          
