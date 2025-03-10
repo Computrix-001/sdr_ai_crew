@@ -29,9 +29,12 @@ jobs:
 
       - name: Create and start virtual environment
         run: |
-          python -m venv venv
-          source venv/bin/activate
-      
+          WORKSPACE_DIR="${GITHUB_WORKSPACE:-/workspaces/sdr_ai_crew}"
+          python -m venv $WORKSPACE_DIR/venv
+          source $WORKSPACE_DIR/venv/bin/activate
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        shell: bash
       - name: Install dependencies
         run: pip install -r requirements.txt
         
