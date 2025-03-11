@@ -194,6 +194,32 @@ def check_environment():
         st.warning("Some environment variables are missing. Please check your .env file.")
         st.info("Make sure your .env file includes all required variables for Azure OpenAI, Azure Communication Services, and SERP API.")
 
+def check_azure_deployment():
+    """Check Azure OpenAI deployment status"""
+    try:
+        deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+        if not deployment_name:
+            st.error("❌ AZURE_OPENAI_DEPLOYMENT not configured")
+            return False
+
+        client = AzureOpenAI(
+            api_key=os.getenv("AZURE_API_KEY"),
+            api_version=os.getenv("AZURE_API_VERSION"),
+            azure_endpoint=os.getenv("AZURE_API_BASE")
+        )
+
+        # Test deployment
+        response = client.chat.completions.create(
+            model=deployment_name,
+            messages=[{"role": "system", "content": "Test"}],
+            max_tokens=5
+        )
+        st.success(f"✅ Azure OpenAI deployment '{deployment_name}' verified")
+        return True
+    except Exception as e:
+        st.error(f"❌ Azure OpenAI deployment error: {str(e)}")
+        return False
+
 def main():
     # Sidebar
     with st.sidebar:

@@ -8,27 +8,27 @@ class LeadResearchAgent:
     def __init__(self):
         """Initialize LeadResearchAgent with Azure OpenAI client"""
         try:
-            # Try CrewAI format first
-            if os.getenv("AZURE_API_KEY") and os.getenv("AZURE_API_BASE"):
-                self.client = AzureOpenAI(
-                    api_key=os.getenv("AZURE_API_KEY"),
-                    api_version=os.getenv("AZURE_API_VERSION"),
-                    azure_endpoint=os.getenv("AZURE_API_BASE")
+            # Initialize Azure OpenAI client with hardcoded API version
+            self.client = AzureOpenAI(
+                api_key=os.getenv('AZURE_API_KEY'),
+                api_version="2024-07-18-preview",  # Hardcode correct version
+                azure_endpoint=os.getenv('AZURE_API_BASE')
+            )
+            
+            # Set deployment name
+            self.deployment_name = "gama"  # Hardcode the deployment name
+            
+            # Test the deployment
+            try:
+                test_response = self.client.chat.completions.create(
+                    model=self.deployment_name,
+                    messages=[{"role": "system", "content": "Test connection"}],
+                    max_tokens=5
                 )
-            # Fall back to legacy format
-            elif os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"):
-                self.client = AzureOpenAI(
-                    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                    api_version=os.getenv("AZURE_API_VERSION"),
-                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-                )
-            else:
-                raise ValueError("Azure OpenAI credentials not found in environment variables")
-                
-            # Verify deployment
-            self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-            if not self.deployment_name:
-                raise ValueError("AZURE_OPENAI_DEPLOYMENT not found in environment variables")
+                print(f"✅ Successfully connected to Azure OpenAI deployment: {self.deployment_name}")
+            except Exception as e:
+                print(f"❌ Deployment test failed: {str(e)}")
+                raise ValueError(f"Azure OpenAI deployment '{self.deployment_name}' not found or inaccessible")
                 
         except Exception as e:
             print(f"Azure OpenAI initialization failed: {str(e)}")
@@ -73,8 +73,9 @@ class LeadResearchAgent:
             8. Recommended Approach
             """
 
+            # Use the deployment name directly
             response = self.client.chat.completions.create(
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+                model=self.deployment_name,  # Use deployment name here
                 messages=[
                     {"role": "system", "content": "You are an expert business analyst providing detailed company research."},
                     {"role": "user", "content": research_prompt}
