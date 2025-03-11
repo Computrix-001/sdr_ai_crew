@@ -33,3 +33,16 @@ def verify_azure_deployment(client: AzureOpenAI, deployment_name: str) -> bool:
     except Exception as e:
         print(f"Deployment verification failed: {str(e)}")
         return False
+
+def send_with_retry(url: str, headers: dict, data: str, max_retries: int = 3) -> requests.Response:
+    """Send request with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, data=data)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(2 ** attempt)  # Exponential backoff
+    raise Exception("Max retries exceeded")

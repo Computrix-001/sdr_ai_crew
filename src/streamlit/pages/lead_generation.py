@@ -66,31 +66,63 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def send_leads_to_netlify(leads_df: pd.DataFrame) -> bool:
-    """Send leads data to Netlify app"""
+    """Send leads data to Netlify app with progress tracking"""
     try:
-        # Convert DataFrame to CSV string
+        total_leads = len(leads_df)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Prepare data
+        status_text.text("Preparing leads data...")
+        progress_bar.progress(0.2)
+        
         csv_buffer = StringIO()
         leads_df.to_csv(csv_buffer, index=False)
         csv_string = csv_buffer.getvalue()
         
-        # Prepare the request
-        url = 'https://dreamy-marzipan-6317cf.netlify.app/api/upload'
+        # Prepare request
+        status_text.text("Sending to Netlify...")
+        progress_bar.progress(0.5)
         
-        # Send POST request with CSV data
         response = requests.post(
-            url,
-            files={'file': ('leads.csv', csv_string, 'text/csv')},
-            headers={'Accept': 'application/json'}
+            'https://dreamy-marzipan-6317cf.netlify.app/api/upload',
+            headers={
+                'x-api-key': 'gama_sk_f3d2r9q7h5k8m4n6p9s2v5x8z1c4b7',
+                'Content-Type': 'text/csv',
+                'Accept': 'application/json'
+            },
+            data=csv_string
         )
         
+        progress_bar.progress(0.8)
+        status_text.text("Processing response...")
+        
         if response.status_code == 200:
+            progress_bar.progress(1.0)
+            status_text.text(f"Successfully processed {total_leads} leads!")
             return True
         else:
-            print(f"Error sending leads: {response.text}")
+            status_text.text("Error processing leads")
             return False
+            
     except Exception as e:
-        print(f"Error sending leads: {str(e)}")
+        st.error(f"Error: {str(e)}")
         return False
+
+def validate_leads_data(leads_df: pd.DataFrame) -> bool:
+    """Validate leads data before sending"""
+    required_columns = ['company_name', 'contact_email', 'website']
+    missing_columns = [col for col in required_columns if col not in leads_df.columns]
+    
+    if missing_columns:
+        st.error(f"Missing required columns: {', '.join(missing_columns)}")
+        return False
+        
+    if leads_df.empty:
+        st.error("No leads data to send")
+        return False
+        
+    return True
 
 def main():
     st.markdown('<div class="main-header">Lead Generation 🎯</div>', unsafe_allow_html=True)
@@ -175,11 +207,12 @@ def main():
                         
                         with col_send:
                             if st.button("🚀 Send to Netlify", use_container_width=True):
-                                with st.spinner("Sending leads to Netlify..."):
-                                    if send_leads_to_netlify(leads_df):
-                                        st.success("✅ Leads successfully sent to Netlify!")
-                                    else:
-                                        st.error("❌ Failed to send leads to Netlify")
+                                with st.spinner("Processing leads..."):
+                                    if validate_leads_data(leads_df):
+                                        if send_leads_to_netlify(leads_df):
+                                            st.success("✅ Leads successfully sent!")
+                                        else:
+                                            st.error("Failed to send leads")
                         
                         # Display leads in table format
                         st.markdown("### Generated Leads")
