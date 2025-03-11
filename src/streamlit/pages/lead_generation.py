@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import requests
 from io import StringIO
 import json
+import webbrowser
 
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), '.env'))
@@ -161,10 +162,46 @@ def main():
             
         st.markdown('</div>', unsafe_allow_html=True)
     
-    col_search, col_export = st.columns([1, 5])
+    st.markdown("### Dashboard Access")
+
+    # Create columns for buttons
+    col_search, col_dashboard, col_space = st.columns([1, 1, 2])
+
+    with col_dashboard:
+        # Using HTML/CSS for a custom styled button
+        st.markdown("""
+            <style>
+            .dashboard-button {
+                background-color: #4F46E5;
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 0.5rem;
+                text-align: center;
+                text-decoration: none;
+                display: inline-block;
+                width: 100%;
+                border: none;
+                cursor: pointer;
+                font-weight: 600;
+                margin: 0.5rem 0;
+            }
+            .dashboard-button:hover {
+                background-color: #4338CA;
+            }
+            </style>
+            
+            <a href="https://dreamy-marzipan-6317cf.netlify.app/" target="_blank" class="dashboard-button">
+                🔗 Open Leads Dashboard
+            </a>
+        """, unsafe_allow_html=True)
+
     with col_search:
         search_clicked = st.button("🔍 Generate Leads", type="primary", use_container_width=True)
-    
+
+    # Alternative method using st.button (if HTML/CSS method doesn't work)
+    # if st.button("🔗 Open Leads Dashboard", use_container_width=True):
+    #     webbrowser.open_new_tab("https://dreamy-marzipan-6317cf.netlify.app/")
+
     # Results section
     if search_clicked:
         if not keyword and not website and not position:
