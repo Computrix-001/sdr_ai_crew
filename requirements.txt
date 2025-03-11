@@ -7,5 +7,5 @@ azure-identity
 openai>=1.0.0
 pandas
 numpy
-requests
+requests>=2.31.0
 streamlit
