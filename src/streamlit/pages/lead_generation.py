@@ -3,6 +3,9 @@ import sys
 import os
 import pandas as pd
 from dotenv import load_dotenv
+import requests
+from io import StringIO
+import json
 
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), '.env'))
@@ -61,6 +64,33 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+def send_leads_to_netlify(leads_df: pd.DataFrame) -> bool:
+    """Send leads data to Netlify app"""
+    try:
+        # Convert DataFrame to CSV string
+        csv_buffer = StringIO()
+        leads_df.to_csv(csv_buffer, index=False)
+        csv_string = csv_buffer.getvalue()
+        
+        # Prepare the request
+        url = 'https://dreamy-marzipan-6317cf.netlify.app/api/upload'
+        
+        # Send POST request with CSV data
+        response = requests.post(
+            url,
+            files={'file': ('leads.csv', csv_string, 'text/csv')},
+            headers={'Accept': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Error sending leads: {response.text}")
+            return False
+    except Exception as e:
+        print(f"Error sending leads: {str(e)}")
+        return False
 
 def main():
     st.markdown('<div class="main-header">Lead Generation 🎯</div>', unsafe_allow_html=True)
@@ -130,9 +160,10 @@ def main():
                         # Convert leads to DataFrame for tabular display
                         leads_df = lead_gen_agent.format_leads_table(leads)
                         
-                        # Display export button
-                        col_placeholder, col_export_btn = st.columns([4, 1])
-                        with col_export_btn:
+                        # Create two columns for the export buttons
+                        col_export, col_send, col_space = st.columns([1, 1, 2])
+                        
+                        with col_export:
                             csv = leads_df.to_csv(index=False)
                             st.download_button(
                                 label="📥 Export CSV",
@@ -141,6 +172,14 @@ def main():
                                 mime="text/csv",
                                 use_container_width=True
                             )
+                        
+                        with col_send:
+                            if st.button("🚀 Send to Netlify", use_container_width=True):
+                                with st.spinner("Sending leads to Netlify..."):
+                                    if send_leads_to_netlify(leads_df):
+                                        st.success("✅ Leads successfully sent to Netlify!")
+                                    else:
+                                        st.error("❌ Failed to send leads to Netlify")
                         
                         # Display leads in table format
                         st.markdown("### Generated Leads")
