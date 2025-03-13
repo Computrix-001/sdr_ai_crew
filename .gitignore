@@ -3,3 +3,6 @@
 .env.local
 .env.*
 !.env.example
+.venv
+.github
+.devcontainer
