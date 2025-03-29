@@ -190,7 +190,7 @@ def main():
             }
             </style>
             
-            <a href="https://dreamy-marzipan-6317cf.netlify.app/" target="_blank" class="dashboard-button">
+            <a href="https://ai.gama-app.com/" target="_blank" class="dashboard-button">
                 🔗 Open Leads Dashboard
             </a>
         """, unsafe_allow_html=True)
@@ -200,7 +200,7 @@ def main():
 
     # Alternative method using st.button (if HTML/CSS method doesn't work)
     # if st.button("🔗 Open Leads Dashboard", use_container_width=True):
-    #     webbrowser.open_new_tab("https://dreamy-marzipan-6317cf.netlify.app/")
+    #     webbrowser.open_new_tab("https://ai.gama-app.com/")
 
     # Results section
     if search_clicked:
