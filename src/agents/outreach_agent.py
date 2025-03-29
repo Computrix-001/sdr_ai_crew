@@ -1,61 +1,69 @@
 from azure.communication.email import EmailClient
 import pandas as pd
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 from openai import AzureOpenAI
 from datetime import datetime
+import time
+
+class RateLimiter:
+    def __init__(self, max_requests: int = 50, time_window: int = 60):
+        self.max_requests = max_requests  # requests per time window
+        self.time_window = time_window  # time window in seconds
+        self.requests = []
+        
+    def can_send(self) -> bool:
+        """Check if we can send another email"""
+        now = time.time()
+        
+        # Remove old requests
+        self.requests = [req for req in self.requests 
+                        if req > now - self.time_window]
+        
+        if len(self.requests) < self.max_requests:
+            self.requests.append(now)
+            return True
+        return False
 
 class OutreachAgent:
     def __init__(self):
-        """Initialize OutreachAgent with necessary clients and configurations"""
-        # Initialize deployment name first
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        if not self.deployment_name:
-            raise ValueError("AZURE_OPENAI_DEPLOYMENT not found in environment variables")
-        
-        print(f"Using deployment name: {self.deployment_name}")  # Debug print
+        """Initialize OutreachAgent with enhanced error handling"""
+        try:
+            # Initialize Azure Communication Services
+            self._init_email_client()
+            
+            # Initialize Azure OpenAI
+            self._init_openai_client()
+            
+            # Initialize Rate Limiter
+            self.rate_limiter = RateLimiter(max_requests=50, time_window=60)
+            
+            print("✅ OutreachAgent initialized successfully")
+            
+        except Exception as e:
+            print(f"❌ OutreachAgent initialization failed: {str(e)}")
+            raise
 
-        # Initialize email client
+    def _init_email_client(self):
+        """Initialize Azure Communication Services email client"""
         self.connection_string = os.getenv("AZURE_COMMUNICATION_CONNECTION_STRING")
         if not self.connection_string:
-            raise ValueError("AZURE_COMMUNICATION_CONNECTION_STRING not found in environment variables")
-        
-        self.email_client = EmailClient.from_connection_string(self.connection_string)
+            raise ValueError("AZURE_COMMUNICATION_CONNECTION_STRING not found")
+            
         self.sender = os.getenv("AZURE_COMMUNICATION_SENDER_EMAIL")
         if not self.sender:
-            raise ValueError("AZURE_COMMUNICATION_SENDER_EMAIL not found in environment variables")
+            raise ValueError("AZURE_COMMUNICATION_SENDER_EMAIL not found")
             
-        # Initialize Azure OpenAI client
-        try:
-            if os.getenv("AZURE_API_KEY") and os.getenv("AZURE_API_BASE"):
-                self.client = AzureOpenAI(
-                    api_key=os.getenv("AZURE_API_KEY"),
-                    api_version=os.getenv("AZURE_API_VERSION", "2024-02-15-preview"),
-                    azure_endpoint=os.getenv("AZURE_API_BASE")
-                )
-                
-                # Test the deployment
-                try:
-                    test_response = self.client.chat.completions.create(
-                        model=self.deployment_name,
-                        messages=[
-                            {"role": "system", "content": "Test deployment connection"}
-                        ],
-                        max_tokens=5
-                    )
-                    print("Successfully connected to Azure OpenAI deployment")
-                except Exception as e:
-                    print(f"Deployment test failed: {str(e)}")
-                    if '404' in str(e):
-                        raise ValueError(f"Azure OpenAI deployment '{self.deployment_name}' not found. Please verify the deployment name in Azure Portal.")
-                    raise e
-                
-            else:
-                raise ValueError("Azure OpenAI credentials not found in environment variables")
-                
-        except Exception as e:
-            print(f"Azure OpenAI initialization failed: {str(e)}")
-            raise
+        self.email_client = EmailClient.from_connection_string(self.connection_string)
+
+    def _init_openai_client(self):
+        """Initialize Azure OpenAI client"""
+        self.client = AzureOpenAI(
+            api_key=os.getenv("AZURE_API_KEY"),
+            api_version=os.getenv("AZURE_API_VERSION"),
+            azure_endpoint=os.getenv("AZURE_API_BASE")
+        )
+        self.deployment_name = "gama"
 
     def process_leads(self, analyzed_leads: List[Dict]) -> List[Dict]:
         """Process and send emails to analyzed leads"""
@@ -81,7 +89,7 @@ class OutreachAgent:
                     print(f"Failed to generate email content for {company_name}")
                     continue
                     
-                success = self.send_email(
+                success = self.send_email_with_retry(
                     recipient=lead['contact_email'],
                     subject=email_content['subject'],
                     content=email_content['content']
@@ -192,31 +200,116 @@ class OutreachAgent:
             print(f"Error generating email content: {str(e)}")
             return None
 
+    def send_email_with_retry(self, recipient: str, subject: str, content: str, 
+                            max_retries: int = 3, retry_delay: int = 2) -> bool:
+        """Send email with retry mechanism and better error handling"""
+        for attempt in range(max_retries):
+            try:
+                # Validate email content
+                if not self._validate_email(recipient, subject, content):
+                    raise ValueError("Invalid email parameters")
+
+                # Create email message
+                message = EmailMessage(
+                    sender=self.sender,
+                    subject=subject,
+                    body=content,  # Plain text content
+                    recipients=[EmailAddress(email=recipient)]  # List of recipients
+                )
+
+                # Send email
+                poller = self.email_client.begin_send(message)
+                result = poller.result()
+                
+                print(f"✅ Email sent successfully to {recipient}")
+                return True
+
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == max_retries - 1:
+                    print(f"❌ Failed to send email to {recipient} after {max_retries} attempts")
+                    return False
+                time.sleep(retry_delay ** attempt)  # Exponential backoff
+
     def send_email(self, recipient: str, subject: str, content: str) -> bool:
-        """Send email using Azure Communication Services"""
+        """Public method to send emails with full error handling and logging"""
         try:
-            if not recipient:
-                print("No recipient email provided")
+            # Log attempt
+            print(f"\nAttempting to send email to: {recipient}")
+            print(f"Subject: {subject}")
+            
+            # Validate inputs
+            if not self._validate_email(recipient, subject, content):
                 return False
                 
-            message = {
-                "content": {
-                    "subject": subject,
-                    "plainText": content,
-                },
-                "recipients": {
-                    "to": [{"address": recipient}]
-                },
-                "senderAddress": self.sender
-            }
-
-            print(f"Sending email to: {recipient}")
-            poller = self.email_client.begin_send(message)
-            result = poller.result()
-            print(f"✓ Email sent successfully to {recipient}")
-            return True
+            # Send with retry
+            success = self.send_email_with_retry(
+                recipient=recipient,
+                subject=subject,
+                content=content
+            )
+            
+            if success:
+                # Track the email
+                status = self.track_email_status(recipient)
+                print(f"Email tracked: {status}")
+            
+            return success
             
         except Exception as e:
-            print(f"✗ Error sending email to {recipient}")
-            print(f"Error details: {str(e)}")
+            print(f"❌ Error sending email: {str(e)}")
             return False
+
+    def _validate_email(self, recipient: str, subject: str, content: str) -> bool:
+        """Validate email parameters"""
+        if not recipient or not '@' in recipient:
+            print("Invalid recipient email")
+            return False
+        if not subject or len(subject) < 2:
+            print("Invalid subject")
+            return False
+        if not content or len(content) < 10:
+            print("Invalid content")
+            return False
+        return True
+
+    def _convert_to_html(self, content: str) -> str:
+        """Convert plain text to HTML format"""
+        paragraphs = content.split('\n\n')
+        html_content = []
+        for p in paragraphs:
+            if p.strip():
+                html_content.append(f"<p>{p.strip()}</p>")
+        return "\n".join(html_content)
+
+    def track_email_status(self, recipient: str) -> Dict:
+        """Track email delivery status"""
+        # Implementation depends on Azure Communication Services capabilities
+        # This is a placeholder for future implementation
+        return {
+            "recipient": recipient,
+            "status": "sent",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def validate_template(self, template: Dict) -> bool:
+        """Validate email template structure"""
+        required_fields = ['subject', 'content']
+        if not all(field in template for field in required_fields):
+            print("Missing required template fields")
+            return False
+            
+        # Check content length
+        if len(template['content']) < 50:
+            print("Email content too short")
+            return False
+            
+        # Check for spam triggers
+        spam_triggers = ['urgent', 'guarantee', 'free', 'winner']
+        content_lower = template['content'].lower()
+        for trigger in spam_triggers:
+            if trigger in content_lower:
+                print(f"Found spam trigger word: {trigger}")
+                return False
+            
+        return True

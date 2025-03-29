@@ -86,7 +86,7 @@ def send_leads_to_netlify(leads_df: pd.DataFrame) -> bool:
         progress_bar.progress(0.5)
         
         response = requests.post(
-            'https://dreamy-marzipan-6317cf.netlify.app/api/upload',
+            'https://ai.gama-app.com',
             headers={
                 'x-api-key': 'gama_sk_f3d2r9q7h5k8m4n6p9s2v5x8z1c4b7',
                 'Content-Type': 'text/csv',
