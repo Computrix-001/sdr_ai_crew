@@ -1,0 +1,103 @@
+{
+  "name": "Email Management Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "6d30d38f-1c6e-4a07-875f-5783b8dd1373",
+        "authentication": "basicAuth",
+        "options": {
+          "responseMode": "lastNode",
+          "responseData": "allEntries"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [760, 460],
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "webhookId": "6d30d38f-1c6e-4a07-875f-5783b8dd1373",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "uehgdVDSARVPPJev",
+          "name": "Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ json: {\"business_name\": \"Gama AI\", \"business_description\": \"We are an AI SaaS company offering a Sales Development Representative (SDR) tool. Our tool automates email responses and manages Gmail interactions efficiently.\"} }];"
+      },
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [960, 460],
+      "name": "Inject Memory",
+      "id": "memory-inject"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a professional sales rep. Craft a polite, well-written business reply to:\n\n{{ $json.emailContent }}\nwhile keeping in mind \n{{ $json.business_description }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [1160, 460],
+      "name": "AI Sales Agent",
+      "id": "ai-agent"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.generatedResponse }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [1360, 460],
+      "name": "Send Email",
+      "id": "email-sender",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jXAaHcDSUVxm3KkI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'success', emailSent: true, response: $json.generatedResponse } }}",
+        "options": {
+          "statusCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, 460],
+      "name": "Response",
+      "id": "webhook-response"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Inject Memory", "type": "main", "index": 0}]]
+    },
+    "Inject Memory": {
+      "main": [[{"node": "AI Sales Agent", "type": "main", "index": 0}]]
+    },
+    "AI Sales Agent": {
+      "main": [[{"node": "Send Email", "type": "main", "index": 0}]]
+    },
+    "Send Email": {
+      "main": [[{"node": "Response", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

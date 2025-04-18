@@ -3,294 +3,176 @@ import sys
 import os
 import pandas as pd
 from dotenv import load_dotenv
-import requests
-from io import StringIO
-import json
-import webbrowser
+import time # For simulating progress
+import requests # Keep for potential future API calls like Netlify example
+from io import StringIO # Keep for potential future API calls
+
+# --- Add parent directory to path ---
+try:
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    streamlit_dir = os.path.dirname(os.path.dirname(__file__)) # src/streamlit
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    # Function to load CSS needs to be defined or imported in each page file
+    def load_css(file_name="style.css"):
+        css_path = os.path.join(streamlit_dir, file_name)
+        if os.path.exists(css_path):
+            with open(css_path) as f:
+                st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+        else:
+            st.warning(f"CSS file not found at {css_path}")
+except IndexError:
+    print("Warning: Could not automatically add parent directory to sys.path.")
+# --- End Add path ---
+
+# Import agent after path is set
+try:
+    from agents.lead_generation_agent import LeadGenerationAgent
+except ImportError:
+    st.error("Failed to import LeadGenerationAgent. Check project structure and sys.path.")
+    # Optionally stop execution if agent is critical
+    # st.stop()
+    LeadGenerationAgent = None # Assign None to avoid further errors
 
 # Load environment variables
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), '.env'))
+load_dotenv(os.path.join(os.path.dirname(parent_dir), '.env'))
 
-# Add parent directory to path to import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+# --- UI Component Functions ---
 
-from agents.lead_generation_agent import LeadGenerationAgent
-from tools.serp_api import SerpApiClient
-
-st.set_page_config(page_title="Lead Generation", page_icon="🎯", layout="wide")
-
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 1rem;
-    }
-    .filter-section {
-        background-color: #F3F4F6;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin-bottom: 1.5rem;
-    }
-    .results-card {
-        background-color: white;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        border: 1px solid #E5E7EB;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .company-name {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #1E40AF;
-    }
-    .company-url {
-        color: #2563EB;
-        font-size: 0.9rem;
-    }
-    .company-description {
-        margin-top: 0.5rem;
-        font-size: 0.95rem;
-    }
-    .search-button {
-        background-color: #2563EB;
-        color: white;
-    }
-    .export-button {
-        background-color: #10B981;
-        color: white;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-def send_leads_to_netlify(leads_df: pd.DataFrame) -> bool:
-    """Send leads data to Netlify app with progress tracking"""
-    try:
-        total_leads = len(leads_df)
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        # Prepare data
-        status_text.text("Preparing leads data...")
-        progress_bar.progress(0.2)
-        
-        csv_buffer = StringIO()
-        leads_df.to_csv(csv_buffer, index=False)
-        csv_string = csv_buffer.getvalue()
-        
-        # Prepare request
-        status_text.text("Sending to Netlify...")
-        progress_bar.progress(0.5)
-        
-        response = requests.post(
-            'https://ai.gama-app.com',
-            headers={
-                'x-api-key': 'gama_sk_f3d2r9q7h5k8m4n6p9s2v5x8z1c4b7',
-                'Content-Type': 'text/csv',
-                'Accept': 'application/json'
-            },
-            data=csv_string
-        )
-        
-        progress_bar.progress(0.8)
-        status_text.text("Processing response...")
-        
-        if response.status_code == 200:
-            progress_bar.progress(1.0)
-            status_text.text(f"Successfully processed {total_leads} leads!")
-            return True
-        else:
-            status_text.text("Error processing leads")
-            return False
-            
-    except Exception as e:
-        st.error(f"Error: {str(e)}")
-        return False
-
-def validate_leads_data(leads_df: pd.DataFrame) -> bool:
-    """Validate leads data before sending"""
-    required_columns = ['company_name', 'contact_email', 'website']
-    missing_columns = [col for col in required_columns if col not in leads_df.columns]
-    
-    if missing_columns:
-        st.error(f"Missing required columns: {', '.join(missing_columns)}")
-        return False
-        
-    if leads_df.empty:
-        st.error("No leads data to send")
-        return False
-        
-    return True
-
-def main():
-    st.markdown('<div class="main-header">Lead Generation 🎯</div>', unsafe_allow_html=True)
-    
-    # Check if SERP API key is configured
-    if not os.getenv("SERPAPI_API_KEY"):
-        st.error("❌ SERP API key not configured!")
-        st.info("Please add SERPAPI_API_KEY to your .env file")
-        return
-    
-    # Search filters section
-    st.markdown("### Search Filters")
-    
-    with st.container():
-        st.markdown('<div class="filter-section">', unsafe_allow_html=True)
-        
+def display_filters():
+    st.markdown('<div class="sub-header">Search Filters</div>', unsafe_allow_html=True)
+    with st.container(border=True): # Use Streamlit border feature
         col1, col2 = st.columns(2)
-        
         with col1:
-            keyword = st.text_input("Keyword/Industry", placeholder="e.g., SaaS, Healthcare, Marketing")
-            website = st.text_input("Website Domain", placeholder="e.g., linkedin.com, instagram.com")
-        
+            keyword = st.text_input("Keyword/Industry", placeholder="e.g., SaaS, Healthcare", key="lg_keyword")
+            website = st.text_input("Website Domain (Optional)", placeholder="e.g., linkedin.com", key="lg_website")
         with col2:
-            location = st.text_input("Location", placeholder="e.g., New York, California, USA")
-            position = st.text_input("Position/Title", placeholder="e.g., CEO, Marketing Manager")
-        
-        col3, col4 = st.columns(2)
-        
-        with col3:
-            num_results = st.slider("Number of results", 5, 50, 10)
-            include_contact = st.checkbox("Include contact information (email/phone)", value=True)
-        
-        with col4:
-            st.write("Advanced Options")
-            search_type = st.radio("Search Type", ["Standard", "Deep Search"], horizontal=True)
-            
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("### Dashboard Access")
+            location = st.text_input("Location (Optional)", placeholder="e.g., New York, USA", key="lg_location")
+            position = st.text_input("Position/Title (Optional)", placeholder="e.g., CEO, Marketing Manager", key="lg_position")
 
-    # Create columns for buttons
-    col_search, col_dashboard, col_space = st.columns([1, 1, 2])
+        num_results = st.slider("Max Leads to Generate", 5, 50, 10, key="lg_num_results")
+        # Removed advanced options for simplicity, can be added back if needed
 
-    with col_dashboard:
-        # Using HTML/CSS for a custom styled button
-        st.markdown("""
-            <style>
-            .dashboard-button {
-                background-color: #4F46E5;
-                color: white;
-                padding: 0.5rem 1rem;
-                border-radius: 0.5rem;
-                text-align: center;
-                text-decoration: none;
-                display: inline-block;
-                width: 100%;
-                border: none;
-                cursor: pointer;
-                font-weight: 600;
-                margin: 0.5rem 0;
-            }
-            .dashboard-button:hover {
-                background-color: #4338CA;
-            }
-            </style>
-            
-            <a href="https://ai.gama-app.com/" target="_blank" class="dashboard-button">
-                🔗 Open Leads Dashboard
-            </a>
-        """, unsafe_allow_html=True)
+    return keyword, website, location, position, num_results
 
-    with col_search:
-        search_clicked = st.button("🔍 Generate Leads", type="primary", use_container_width=True)
+def display_results(leads_df):
+    st.markdown('<div class="sub-header">Generated Leads</div>', unsafe_allow_html=True)
+    if leads_df is None or leads_df.empty:
+        st.info("No leads generated yet or the search returned no results.")
+        return
 
-    # Alternative method using st.button (if HTML/CSS method doesn't work)
-    # if st.button("🔗 Open Leads Dashboard", use_container_width=True):
-    #     webbrowser.open_new_tab("https://ai.gama-app.com/")
+    st.dataframe(leads_df, use_container_width=True)
 
-    # Results section
+    # --- Export Button ---
+    csv = leads_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+         label="📥 Download Leads as CSV",
+         data=csv,
+         file_name='generated_leads.csv',
+         mime='text/csv',
+         key='lg_download_csv'
+     )
+    # --- End Export Button ---
+
+    # --- Optional: Display as Cards (can be slow for many leads) ---
+    # display_leads_as_cards(leads_df)
+    # --- End Optional Display ---
+
+# Optional: Function to display leads as individual cards
+# def display_leads_as_cards(leads_df):
+#     if len(leads_df) > 20: # Limit card display for performance
+#         st.caption("Displaying first 20 leads as cards.")
+#         leads_df = leads_df.head(20)
+#
+#     for index, lead in leads_df.iterrows():
+#         with st.container(border=True):
+#             st.markdown(f'<div class="company-name">{lead.get("company_name", "N/A")}</div>', unsafe_allow_html=True)
+#             if pd.notna(lead.get("website")):
+#                 st.markdown(f'<a href="{lead["website"]}" target="_blank" class="company-url">{lead["website"]}</a>', unsafe_allow_html=True)
+#             # Add other details like email, phone, profiles if available and desired
+#             if pd.notna(lead.get("contact_email")):
+#                 st.write(f"📧 {lead['contact_email']}")
+#             if pd.notna(lead.get("contact_phone")):
+#                 st.write(f"📞 {lead['contact_phone']}")
+#             if pd.notna(lead.get("linkedin_url")):
+#                 st.markdown(f'🔗 <a href="{lead["linkedin_url"]}" target="_blank">LinkedIn</a>', unsafe_allow_html=True)
+#             if pd.notna(lead.get("github_url")):
+#                  st.markdown(f'🔗 <a href="{lead["github_url"]}" target="_blank">GitHub</a>', unsafe_allow_html=True)
+#             if pd.notna(lead.get("description")):
+#                 st.markdown(f'<div class="company-description">{lead["description"][:150]}...</div>', unsafe_allow_html=True) # Show snippet
+
+
+# --- Main Page Execution ---
+def run_lead_generation():
+    st.set_page_config(page_title="Lead Generation", page_icon="🎯", layout="wide")
+    load_css()
+
+    st.markdown('<div class="main-header">Lead Generation</div>', unsafe_allow_html=True)
+
+    # Check for SERP API key
+    if not os.getenv("SERPAPI_API_KEY"):
+        st.error("❌ SERP API key (SERPAPI_API_KEY) is not configured in your `.env` file. Lead generation requires this key.")
+        st.stop() # Stop execution if key is missing
+
+    # Initialize agent (handle potential import error)
+    agent = None
+    if LeadGenerationAgent:
+        try:
+            agent = LeadGenerationAgent()
+        except Exception as e:
+            st.error(f"Failed to initialize Lead Generation Agent: {e}")
+            st.stop()
+    else:
+        st.error("LeadGenerationAgent could not be imported.")
+        st.stop()
+
+
+    keyword, website, location, position, num_results = display_filters()
+
+    # Initialize session state for results
+    if 'generated_leads_df' not in st.session_state:
+        st.session_state.generated_leads_df = None
+
+    search_clicked = st.button("🔍 Generate Leads", type="primary", key="lg_generate")
+
     if search_clicked:
         if not keyword and not website and not position:
-            st.warning("Please enter at least one search parameter (keyword, website, or position)")
+            st.warning("Please provide at least one search parameter (Keyword, Website, or Position).")
         else:
-            with st.spinner("Generating leads..."):
-                try:
-                    # Initialize agents
-                    serp_client = SerpApiClient()
-                    lead_gen_agent = LeadGenerationAgent(serp_client)
-                    
-                    # Generate leads with filters
-                    leads = lead_gen_agent.generate_leads_with_filters(
-                        keyword=keyword,
-                        website=website,
-                        location=location,
-                        position=position,
-                        num_results=num_results
-                    )
-                    
-                    # Display results
-                    if leads:
-                        st.success(f"Found {len(leads)} potential leads!")
-                        
-                        # Convert leads to DataFrame for tabular display
-                        leads_df = lead_gen_agent.format_leads_table(leads)
-                        
-                        # Create two columns for the export buttons
-                        col_export, col_send, col_space = st.columns([1, 1, 2])
-                        
-                        with col_export:
-                            csv = leads_df.to_csv(index=False)
-                            st.download_button(
-                                label="📥 Export CSV",
-                                data=csv,
-                                file_name="generated_leads.csv",
-                                mime="text/csv",
-                                use_container_width=True
-                            )
-                        
-                        with col_send:
-                            if st.button("🚀 Send to Netlify", use_container_width=True):
-                                with st.spinner("Processing leads..."):
-                                    if validate_leads_data(leads_df):
-                                        if send_leads_to_netlify(leads_df):
-                                            st.success("✅ Leads successfully sent!")
-                                        else:
-                                            st.error("Failed to send leads")
-                        
-                        # Display leads in table format
-                        st.markdown("### Generated Leads")
-                        st.dataframe(
-                            leads_df,
-                            use_container_width=True,
-                            column_config={
-                                "company_name": "Company",
-                                "contact_email": "Email",
-                                "contact_phone": "Phone",
-                                "website": st.column_config.LinkColumn("Website"),
-                                "description": st.column_config.TextColumn("Description", width="large"),
-                                "industry": "Industry",
-                                "location": "Location",
-                                "source": "Source"
-                            }
-                        )
-                        
-                        # Display individual lead cards for detailed view
-                        st.markdown("### Detailed Lead Information")
-                        for lead in leads:
-                            with st.container():
-                                st.markdown(f"""
-                                <div class="results-card">
-                                    <div class="company-name">{lead['company_name']}</div>
-                                    <div class="company-url">🔗 <a href="{lead['website']}" target="_blank">{lead['website']}</a></div>
-                                    <div class="company-description">{lead['description']}</div>
-                                    <div style="margin-top: 0.5rem;">
-                                        <span style="color: #6B7280; font-size: 0.9rem;">
-                                            Email: {lead['contact_email'] if lead['contact_email'] else 'Not found'} | 
-                                            Phone: {lead['contact_phone'] if lead['contact_phone'] else 'Not found'}
-                                        </span>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                    else:
-                        st.warning("No leads found. Try adjusting your search parameters.")
-                        
-                except Exception as e:
-                    st.error(f"Error generating leads: {str(e)}")
-                    st.info("Please check your search parameters and try again.")
+            # Show progress
+            progress_bar = st.progress(0, text="Initializing lead generation...")
+            try:
+                # Call the agent method
+                progress_bar.progress(30, text=f"Searching for leads based on criteria...")
+                leads_data = agent.generate_leads_with_filters(
+                    keyword=keyword if keyword else None,
+                    website=website if website else None,
+                    location=location if location else None,
+                    position=position if position else None,
+                    num_results=num_results
+                )
+                progress_bar.progress(80, text=f"Processing results...")
+
+                # Format results into DataFrame
+                if leads_data:
+                    st.session_state.generated_leads_df = agent.format_leads_table(leads_data)
+                    progress_bar.progress(100, text=f"Found {len(st.session_state.generated_leads_df)} leads!")
+                    st.success(f"Successfully generated {len(st.session_state.generated_leads_df)} leads!")
+                else:
+                    st.session_state.generated_leads_df = pd.DataFrame() # Empty DataFrame if no leads
+                    progress_bar.progress(100, text="No leads found matching the criteria.")
+                    st.info("No leads found matching the specified criteria.")
+
+                time.sleep(0.5) # Keep message visible briefly
+                progress_bar.empty() # Remove progress bar
+
+            except Exception as e:
+                progress_bar.empty()
+                st.error(f"An error occurred during lead generation: {e}")
+                st.session_state.generated_leads_df = None # Clear results on error
+
+    # Display results from session state
+    display_results(st.session_state.generated_leads_df)
 
 if __name__ == "__main__":
-    main()
+    run_lead_generation()

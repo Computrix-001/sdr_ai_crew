@@ -3,237 +3,237 @@ import sys
 import os
 import pandas as pd
 from dotenv import load_dotenv
+import time
+
+# --- Add parent directory to path ---
+try:
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    streamlit_dir = os.path.dirname(os.path.dirname(__file__)) # src/streamlit
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    # Function to load CSS
+    def load_css(file_name="style.css"):
+        css_path = os.path.join(streamlit_dir, file_name)
+        if os.path.exists(css_path):
+            with open(css_path) as f:
+                st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+        else:
+            st.warning(f"CSS file not found at {css_path}")
+except IndexError:
+    print("Warning: Could not automatically add parent directory to sys.path.")
+# --- End Add path ---
+
+# Import agent after path is set
+try:
+    from agents.lead_research_agent import LeadResearchAgent
+except ImportError:
+    st.error("Failed to import LeadResearchAgent. Check project structure and sys.path.")
+    LeadResearchAgent = None
 
 # Load environment variables
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), '.env'))
+load_dotenv(os.path.join(os.path.dirname(parent_dir), '.env'))
 
-# Add parent directory to path to import from src
-parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-from agents.lead_research_agent import LeadResearchAgent
-
-st.set_page_config(page_title="Lead Research", page_icon="🔍", layout="wide")
-
-# Custom CSS (keeping the existing CSS)
-st.markdown("""
-<style>
-    .main-header { font-size: 2rem; font-weight: 700; color: #1E3A8A; margin-bottom: 1rem; }
-    .upload-section { background-color: #F3F4F6; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem; }
-    .research-card { background-color: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; 
-                    border: 1px solid #E5E7EB; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .company-name { font-size: 1.2rem; font-weight: 600; color: #1E40AF; }
-    .section-title { font-size: 1rem; font-weight: 600; color: #4B5563; margin-top: 0.75rem; margin-bottom: 0.25rem; }
-    .score-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 9999px; 
-                  font-size: 0.875rem; font-weight: 500; margin-right: 0.5rem; }
-    .score-high { background-color: #D1FAE5; color: #065F46; }
-    .score-medium { background-color: #FEF3C7; color: #92400E; }
-    .score-low { background-color: #FEE2E2; color: #B91C1C; }
-    .progress-bar-container { margin-top: 1rem; margin-bottom: 1rem; }
-    .error-message { color: #DC2626; padding: 1rem; background-color: #FEE2E2; border-radius: 0.5rem; }
-    .success-message { color: #065F46; padding: 1rem; background-color: #D1FAE5; border-radius: 0.5rem; }
-</style>
-""", unsafe_allow_html=True)
-
+# --- Helper Functions ---
 def validate_environment():
-    """Validate all required environment variables"""
+    """Validate necessary environment variables for this page."""
     required_vars = {
         'AZURE_OPENAI_API_KEY': os.getenv('AZURE_OPENAI_API_KEY'),
         'AZURE_OPENAI_ENDPOINT': os.getenv('AZURE_OPENAI_ENDPOINT'),
-        'AZURE_OPENAI_API_VERSION': os.getenv('AZURE_OPENAI_API_VERSION'),
-        'AZURE_OPENAI_DEPLOYMENT': os.getenv('AZURE_OPENAI_DEPLOYMENT')
+        'AZURE_OPENAI_DEPLOYMENT': os.getenv('AZURE_OPENAI_DEPLOYMENT'),
     }
-    
     missing_vars = [key for key, value in required_vars.items() if not value]
-    
     if missing_vars:
-        st.error("❌ Missing required environment variables:")
-        for var in missing_vars:
-            st.error(f"- {var}")
+        st.error(f"❌ Missing required Azure OpenAI environment variables: {', '.join(missing_vars)}. Please check your `.env` file.")
         return False
     return True
 
 def process_uploaded_file(uploaded_file):
-    """Process and validate uploaded CSV file"""
+    """Process uploaded CSV file into a DataFrame."""
     try:
-        if uploaded_file is None:
+        df = pd.read_csv(uploaded_file)
+        # Basic validation: Check for essential columns (adjust as needed)
+        required_cols = ['company_name']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"Uploaded CSV must contain at least the following columns: {', '.join(required_cols)}")
             return None
-            
-        # Try to read CSV with explicit encoding
-        try:
-            df = pd.read_csv(uploaded_file, encoding='utf-8')
-        except UnicodeDecodeError:
-            df = pd.read_csv(uploaded_file, encoding='latin-1')
-        
-        # Debug print
-        st.write("DataFrame Shape:", df.shape)
-        st.write("DataFrame Columns:", df.columns.tolist())
-        
-        # Check if file is empty
-        if df.empty:
-            st.error("The uploaded CSV file is empty")
-            return None
-            
-        # Check for required columns
-        required_columns = ['company_name']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        
-        if missing_columns:
-            st.error(f"Missing required columns: {', '.join(missing_columns)}")
-            return None
-            
         return df
-    except pd.errors.EmptyDataError:
-        st.error("The uploaded CSV file is empty")
-        return None
     except Exception as e:
-        st.error(f"Error reading CSV: {str(e)}")
-        st.write("Error details:", str(e))
+        st.error(f"Error processing uploaded file: {e}")
         return None
 
-def display_research_results(research_results):
-    """Display research results in a nicely formatted card"""
-    if not research_results:
-        st.error("No research results to display")
-        return
-        
-    company_name = research_results.get('company_name', 'Unknown Company')
-    website = research_results.get('website', 'N/A')
-    industry = research_results.get('industry', 'N/A')
-    research_data = research_results.get('research_data', '')
-    scoring_analysis = research_results.get('scoring_analysis', '')
-    
-    if 'Error during research' in research_data:
-        st.error(f"Research Error for {company_name}: {research_data}")
-        return
-        
-    st.markdown(f"""
-    <div class="research-card">
-        <div class="company-name">{company_name}</div>
-        <div style="margin-top: 0.5rem; font-size: 0.9rem;">
-            <span>Website: <a href="{website}" target="_blank">{website}</a></span>
-            <span style="margin-left: 1rem;">Industry: {industry}</span>
-        </div>
-        
-        <div class="section-title">Research Insights</div>
-        <div style="white-space: pre-line;">{research_data}</div>
-        
-        <div class="section-title">Lead Scoring</div>
-        <div style="white-space: pre-line;">{scoring_analysis}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("📊 Export Research", key=f"export_{company_name}"):
-            research_df = pd.DataFrame([research_results])
-            csv = research_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Research",
-                data=csv,
-                file_name=f"{company_name}_research.csv",
-                mime="text/csv"
-            )
-    with col2:
-        if st.button("📧 Start Outreach", key=f"outreach_{company_name}"):
-            st.session_state.outreach_data = research_results
-            st.switch_page("pages/outreach.py")
+# --- UI Component Functions ---
+def display_upload_section():
+    st.markdown('<div class="sub-header">Upload or Enter Leads</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        tab1, tab2 = st.tabs(["Upload CSV", "Enter Manually"])
 
-def main():
-    st.markdown('<div class="main-header">Lead Research 🔍</div>', unsafe_allow_html=True)
-    
-    # Validate environment variables
-    if not validate_environment():
-        st.stop()
-    
-    # File upload section
-    st.markdown("### Upload Leads")
-    
-    with st.container():
-        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            uploaded_file = st.file_uploader("Upload your leads CSV", type=['csv'])
-            
+        with tab1:
+            uploaded_file = st.file_uploader("Upload your leads CSV (must contain 'company_name')", type=['csv'], key="lr_upload")
             if uploaded_file:
                 df = process_uploaded_file(uploaded_file)
                 if df is not None:
-                    st.success(f"Successfully loaded {len(df)} leads")
-                    st.dataframe(df, use_container_width=True)
-        
-        with col2:
-            st.write("Or research a single company")
-            manual_company = st.text_input("Company Name")
-            manual_website = st.text_input("Website (optional)")
-            manual_industry = st.text_input("Industry (optional)")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Research buttons
-    col_research_file, col_research_single, col_spacer = st.columns([1, 1, 2])
-    
-    with col_research_file:
-        research_file_clicked = st.button("🔍 Research Uploaded Leads", 
-                                         type="primary", 
-                                         disabled=uploaded_file is None,
-                                         use_container_width=True)
-    
-    with col_research_single:
-        research_single_clicked = st.button("🔍 Research Single Company", 
-                                           type="primary", 
-                                           disabled=not manual_company,
-                                           use_container_width=True)
-    
-    # Research section
-    if research_file_clicked and uploaded_file:
-        df = process_uploaded_file(uploaded_file)
-        if df is not None:
-            try:
-                leads = df.to_dict('records')
-                research_agent = LeadResearchAgent()
-                
-                progress_bar = st.progress(0)
-                researched_leads = []
-                
-                for idx, lead in enumerate(leads):
-                    with st.spinner(f"Researching {lead['company_name']} ({idx+1}/{len(leads)})"):
-                        researched_lead = research_agent.research_company(lead)
-                        researched_leads.append(researched_lead)
-                        progress_bar.progress((idx + 1) / len(leads))
-                        display_research_results(researched_lead)
-                
-                if researched_leads:
-                    results_df = pd.DataFrame(researched_leads)
-                    csv = results_df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Export All Research Results",
-                        data=csv,
-                        file_name="lead_research_results.csv",
-                        mime="text/csv"
-                    )
-                    
-            except Exception as e:
-                st.error(f"Error during batch research: {str(e)}")
-    
-    elif research_single_clicked and manual_company:
+                    st.success(f"Successfully loaded {len(df)} leads from CSV.")
+                    # Store DataFrame in session state for processing
+                    st.session_state.uploaded_leads_df = df
+                    # Display a preview
+                    st.dataframe(df.head(), use_container_width=True)
+                else:
+                    # Clear state if processing failed
+                    if 'uploaded_leads_df' in st.session_state:
+                        del st.session_state.uploaded_leads_df
+            else:
+                 # Clear state if no file is uploaded
+                 if 'uploaded_leads_df' in st.session_state:
+                     del st.session_state.uploaded_leads_df
+
+        with tab2:
+            st.markdown("##### Research a Single Company")
+            manual_company = st.text_input("Company Name*", key="lr_manual_company")
+            manual_website = st.text_input("Website (Optional)", key="lr_manual_website")
+            manual_industry = st.text_input("Industry (Optional)", key="lr_manual_industry")
+            # Store manual input in session state for processing
+            if manual_company:
+                st.session_state.manual_lead_input = {
+                    'company_name': manual_company,
+                    'website': manual_website if manual_website else None,
+                    'industry': manual_industry if manual_industry else None
+                }
+            else:
+                 if 'manual_lead_input' in st.session_state:
+                     del st.session_state.manual_lead_input
+
+def display_research_results(research_results_list):
+    st.markdown('<div class="sub-header">Research Results</div>', unsafe_allow_html=True)
+
+    if not research_results_list:
+        st.info("No research results to display. Upload leads or enter manually and click 'Research'.")
+        return
+
+    for idx, result in enumerate(research_results_list):
+        with st.container(border=True):
+            st.markdown(f'<div class="company-name">{result.get("company_name", "N/A")}</div>', unsafe_allow_html=True)
+            details_html = '<div class="company-details">'
+            if result.get("website"):
+                details_html += f'<span>Website: <a href="{result["website"]}" target="_blank">{result["website"]}</a></span>'
+            if result.get("industry"):
+                 details_html += f'<span>Industry: {result["industry"]}</span>'
+            details_html += '</div>'
+            st.markdown(details_html, unsafe_allow_html=True)
+
+            # Display research data and scoring
+            tab1, tab2 = st.tabs(["Research Insights", "Lead Scoring"])
+            with tab1:
+                research_data = result.get('research_data', 'No research data generated.')
+                if 'Error during research' in research_data:
+                     st.error(f"Research Error: {research_data}")
+                else:
+                     st.markdown(f'<div class="research-content">{research_data}</div>', unsafe_allow_html=True)
+            with tab2:
+                scoring_analysis = result.get('scoring_analysis', 'No scoring analysis generated.')
+                st.markdown(f'<div class="research-content">{scoring_analysis}</div>', unsafe_allow_html=True)
+
+            # Action buttons for each result
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                 # Simple export for single lead result
+                 csv_single = pd.DataFrame([result]).to_csv(index=False).encode('utf-8')
+                 st.download_button(label="📥 Export", data=csv_single,
+                                    file_name=f"{result.get('company_name', 'lead')}_research.csv",
+                                    mime='text/csv', key=f"lr_export_{idx}")
+            with col2:
+                 if st.button("📧 Start Outreach", key=f"lr_outreach_{idx}", type="secondary"):
+                     # Store data needed for outreach page in session state
+                     st.session_state.outreach_target_lead = result
+                     st.success(f"Lead '{result.get('company_name')}' ready for outreach. Navigate to the Email Outreach page.")
+                     # Consider automatically switching page: st.switch_page("pages/outreach.py")
+
+# --- Main Page Execution ---
+def run_lead_research():
+    st.set_page_config(page_title="Lead Research", page_icon="🔍", layout="wide")
+    load_css()
+
+    st.markdown('<div class="main-header">Lead Research</div>', unsafe_allow_html=True)
+
+    if not validate_environment():
+        st.stop()
+
+    # Initialize agent
+    agent = None
+    if LeadResearchAgent:
         try:
-            lead = {
-                'company_name': manual_company,
-                'website': manual_website,
-                'industry': manual_industry,
-                'description': ''
-            }
-            
-            with st.spinner(f"Researching {manual_company}..."):
-                research_agent = LeadResearchAgent()
-                researched_lead = research_agent.research_company(lead)
-                display_research_results(researched_lead)
-                
+            agent = LeadResearchAgent()
         except Exception as e:
-            st.error(f"Error researching {manual_company}: {str(e)}")
+            st.error(f"Failed to initialize Lead Research Agent: {e}")
+            st.stop()
+    else:
+        st.error("LeadResearchAgent could not be imported.")
+        st.stop()
+
+    # Initialize session state for results
+    if 'research_results' not in st.session_state:
+        st.session_state.research_results = []
+
+    display_upload_section()
+
+    # Research Buttons
+    col_research_file, col_research_single, col_spacer = st.columns([1, 1, 2])
+    research_file_clicked = False
+    research_single_clicked = False
+
+    with col_research_file:
+        # Disable button if no file is uploaded/processed
+        research_file_clicked = st.button("🔍 Research Uploaded Leads",
+                                         type="primary",
+                                         key="lr_research_file",
+                                         disabled='uploaded_leads_df' not in st.session_state)
+    with col_research_single:
+        # Disable button if no manual company name
+         research_single_clicked = st.button("🔍 Research Manual Entry",
+                                            type="primary",
+                                            key="lr_research_single",
+                                            disabled='manual_lead_input' not in st.session_state)
+
+    # --- Processing Logic ---
+    leads_to_process = []
+    if research_file_clicked and 'uploaded_leads_df' in st.session_state:
+        # Convert DataFrame rows to list of dicts for the agent
+        leads_to_process = st.session_state.uploaded_leads_df.to_dict('records')
+        st.info(f"Starting research for {len(leads_to_process)} leads from CSV...")
+
+    elif research_single_clicked and 'manual_lead_input' in st.session_state:
+        leads_to_process = [st.session_state.manual_lead_input]
+        st.info(f"Starting research for '{leads_to_process[0]['company_name']}'...")
+
+    if leads_to_process:
+        progress_bar = st.progress(0, text="Initializing research...")
+        results = []
+        total = len(leads_to_process)
+        try:
+            for i, lead_input in enumerate(leads_to_process):
+                progress_text = f"Researching lead {i+1}/{total}: {lead_input.get('company_name', 'N/A')}..."
+                progress_bar.progress((i + 1) / total, text=progress_text)
+                # Call the agent's research method (assuming research_company exists)
+                # Adjust this call based on the actual agent method name and signature
+                research_output = agent.research_company(lead_input)
+                results.append(research_output)
+
+            st.session_state.research_results = results
+            progress_bar.empty()
+            st.success(f"Research completed for {total} lead(s).")
+            # Clear input state after processing
+            if research_file_clicked and 'uploaded_leads_df' in st.session_state:
+                del st.session_state.uploaded_leads_df
+            if research_single_clicked and 'manual_lead_input' in st.session_state:
+                del st.session_state.manual_lead_input
+
+        except Exception as e:
+            progress_bar.empty()
+            st.error(f"An error occurred during research: {e}")
+            # Optionally clear partial results on error
+            # st.session_state.research_results = []
+
+    # Display results from session state
+    display_research_results(st.session_state.research_results)
 
 if __name__ == "__main__":
-    main()
+    run_lead_research()
